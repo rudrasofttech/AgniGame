@@ -1,4 +1,21 @@
-﻿var scenery = {
+﻿// Safe localStorage wrapper — falls back to an in-memory object in private
+// browsing modes or when storage is unavailable/quota-exceeded.
+var safeStorage = (function () {
+    var mem = {};
+    function canUse() {
+        try { localStorage.setItem('__test__', '1'); localStorage.removeItem('__test__'); return true; }
+        catch (e) { return false; }
+    }
+    var ok = canUse();
+    return {
+        getItem: function (k) { return ok ? localStorage.getItem(k) : (k in mem ? mem[k] : null); },
+        setItem: function (k, v) { if (ok) { try { localStorage.setItem(k, v); } catch (e) { mem[k] = v; } } else { mem[k] = v; } },
+        get: function (k) { return this.getItem(k); },
+        set: function (k, v) { this.setItem(k, v); }
+    };
+})();
+
+var scenery = {
     ground: { height: 50 },
     rubble: { height: 81 },
     launcher: {
@@ -88,20 +105,78 @@ var MSpeed = {
         }
     }
 };
+
+// Central config for all playable levels.
+// Add a new object here to introduce a new level — no other code needs changing.
+var levelConfig = [
+    {
+        stateKey: 'tutorial',
+        name: 'Training',
+        minCleared: 0,
+        yPos: 100
+    },
+    {
+        stateKey: 'level1',
+        name: 'First Blood',
+        minCleared: 1,
+        yPos: 200
+    },
+    {
+        stateKey: 'level2',
+        name: 'More Will Come',
+        minCleared: 2,
+        yPos: 300
+    },
+    {
+        stateKey: 'level3',
+        name: 'No End In Sight',
+        minCleared: 3,
+        yPos: 400,
+        maxEnemy: 30, maxShots: 30, maxHits: 5, stageIndex: 3,
+        enemySpeed: MSpeed.Normal,
+        successMessage: "Good Job!\nMove To Next Stage",
+        failureMessage: "You don't \n have it in you",
+        levelIntroMessage: "Hope you are ready for more mayhem, enemy has just launched 30 missiles.\n If 5 missiles hit the city you will loose."
+    },
+    {
+        stateKey: 'level4',
+        name: 'Only Few Bullets',
+        minCleared: 4,
+        yPos: 500,
+        maxEnemy: 30, maxShots: 24, maxHits: 5, stageIndex: 4,
+        enemySpeed: MSpeed.Normal,
+        successMessage: "Good Job!\nWar is still on.",
+        failureMessage: "We trusted you :(",
+        levelIntroMessage: "We wish we would have stocked piled more Agni missiles,\n you have to defend the city with 24 missiles against \n 30 enemies. If 5 missiles hit the city you will loose. "
+    },
+    {
+        stateKey: 'level5',
+        name: 'Do or Die',
+        minCleared: 5,
+        yPos: 600,
+        maxEnemy: 50, maxShots: 45, maxHits: 5, stageIndex: 5,
+        enemySpeed: MSpeed.Fast,
+        successMessage: "WOW!\n You did it.\nYou saved the city.",
+        failureMessage: "Millions Perished\n You gave up easily.",
+        levelIntroMessage: "It's now or never, enemy is frustrated and has began his final assault with 50 missiles,\n we have managed to produce 45 Agni missiles to counter their attack.\n Our future depends on you now. \n If 5 missiles hit the city you will loose."
+    }
+];
+
 var initState = {
     preload: function () {
-        game.scale.scaleMode = Phaser.ScaleManager.SHOW_ALL;
+        game.scale.scaleMode = Phaser.ScaleManager.RESIZE;
         game.scale.parentIsWindow = true;
         game.scale.pageAlignHorizontally = false;
         game.scale.pageAlignVertically = false;
         game.scale.refresh();
-        var loadingEl = document.getElementById('loadingtxt');
-        loadingEl.style.display = 'block';
+        var loadingBar = document.getElementById('loadingbar');
+        var loadingFill = document.getElementById('loadingfill');
+        if (loadingBar) { loadingBar.style.display = 'block'; }
         game.load.onFileComplete.add(function (progress) {
-            loadingEl.innerHTML = 'Loading&hellip; ' + progress + '%';
+            if (loadingFill) { loadingFill.style.width = progress + '%'; }
         });
         game.load.onLoadComplete.addOnce(function () {
-            loadingEl.style.display = 'none';
+            if (loadingBar) { loadingBar.style.display = 'none'; }
         });
         game.load.image('startscreen', 'images/startscreen.jpg');
         game.load.image('startbtn', 'images/start.png');
@@ -148,8 +223,8 @@ var initState = {
         game.load.audio('click', ['sounds/click.mp3', 'sounds/click.ogg']);
     },
     create: function () {
-        if (localStorage.volumestatus == undefined) {
-            localStorage.volumestatus = true;
+        if (safeStorage.get('volumestatus') == null) {
+            safeStorage.set('volumestatus', 'true');
         }
 
         this.ss = this.game.add.sprite(game.world.centerX, game.world.centerY, "startscreen");
@@ -159,11 +234,99 @@ var initState = {
         this.startbtn.anchor.setTo(0.5);
         clicksound = new Phaser.Sound(game, "click", 1, false);
         this.startbtn.onInputDown.add(function () {
-
             startClickSound();
-            game.state.start('stage');
+            // Show intro cutscene on first ever launch; skip it on return visits.
+            var nextState = safeStorage.get('introSeen') === 'true' ? 'stage' : 'intro';
+            game.state.start(nextState);
         }, this);
     },
+};
+
+// Intro cutscene — shown once before the player's first session.
+// Tracked via safeStorage('introSeen'). Tapping/clicking during
+// the typewriter phase reveals the full text immediately.
+var introState = {
+    create: function () {
+        var bg = game.add.sprite(game.world.centerX, game.world.centerY, 'startscreen');
+        bg.anchor.setTo(0.5);
+
+        var overlay = game.add.graphics(0, 0);
+        overlay.beginFill(0x000000, 0.68);
+        overlay.drawRect(0, 0, game.world.width, game.world.height);
+        overlay.endFill();
+
+        var title = game.add.text(game.world.centerX, 80, 'AGNI', {
+            font: '72px armalite', fill: '#E8C252', align: 'center'
+        });
+        title.anchor.set(0.5);
+        title.alpha = 0;
+        game.add.tween(title).to({ alpha: 1 }, 900, Phaser.Easing.Linear.None, true, 100);
+
+        var story = [
+            'Get ready to defend your city against a foe',
+            'who is hell bent on destroying it.',
+            '',
+            'The end of days are near \u2014 no one talks of peace anymore.',
+            '',
+            'Once the onslaught begins you won\u2019t have much time to react.',
+            'Every single shot must be perfectly timed.',
+            'No room for miscalculation.',
+            '',
+            'One miss and millions perish.'
+        ].join('\n');
+
+        var storyEl = game.add.text(game.world.centerX, 190, '', {
+            font: '28px armalite',
+            fill: '#ffffff',
+            align: 'center',
+            wordWrap: true,
+            wordWrapWidth: 960
+        });
+        storyEl.anchor.set(0.5, 0);
+
+        var continuebtn = game.add.text(game.world.centerX, game.world.height - 90,
+            'Begin \u2192', scenery.buttonTextStyle);
+        continuebtn.anchor.set(0.5);
+        continuebtn.alpha = 0;
+        continuebtn.inputEnabled = true;
+        continuebtn.events.onInputOver.add(function () {
+            continuebtn.fill = scenery.mouseOverTextColor;
+            game.canvas.style.cursor = 'pointer';
+        });
+        continuebtn.events.onInputOut.add(function () {
+            continuebtn.fill = scenery.mouseOutTextColor;
+            game.canvas.style.cursor = 'default';
+        });
+        continuebtn.events.onInputDown.add(function () {
+            startClickSound();
+            safeStorage.set('introSeen', 'true');
+            game.state.start('stage');
+        });
+
+        var charIndex = 0;
+        var typeTimer = game.time.events.loop(35, function () {
+            if (charIndex < story.length) {
+                charIndex++;
+                storyEl.setText(story.substring(0, charIndex));
+            } else {
+                game.time.events.remove(typeTimer);
+                game.add.tween(continuebtn).to({ alpha: 1 }, 700,
+                    Phaser.Easing.Linear.None, true, 200);
+            }
+        }, this);
+
+        // Tap/click during typewriter → show full text at once
+        game.input.onDown.add(function () {
+            if (charIndex < story.length) {
+                game.time.events.remove(typeTimer);
+                charIndex = story.length;
+                storyEl.setText(story);
+                game.add.tween(continuebtn).to({ alpha: 1 }, 400,
+                    Phaser.Easing.Linear.None, true);
+            }
+        }, this);
+    },
+    update: function () {}
 };
 
 var stageOptionState = {
@@ -172,161 +335,43 @@ var stageOptionState = {
 
         var s = new SceneBuilder(this);
         game.input.mouse.capture = true;
-        if (localStorage.stageCleared == undefined) {
-            localStorage.stageCleared = 0;
-        }
-        if (localStorage.stageCleared >= 0) {
-            var tutorial = game.add.text(game.world.centerX, 100, "Training", scenery.levelNameStyle);
-            tutorial.anchor.set(0.5);
-            tutorial.inputEnabled = true;
-
-            tutorial.events.onInputOver.add(function (item) {
-                item.fill = scenery.mouseOverTextColor;
-                this.game.canvas.style.cursor = "pointer";
-            }, this);
-
-            tutorial.events.onInputOut.add(function (item) {
-                item.fill = scenery.mouseOverTextColor;
-                this.game.canvas.style.cursor = "default";
-            }, this);
-
-            tutorial.events.onInputDown.add(function (item) {
-                startClickSound();
-                game.state.start('tutorial');
-            }, this);
+        if (safeStorage.get('stageCleared') == null) {
+            safeStorage.set('stageCleared', 0);
         }
 
-        if (localStorage.stageCleared >= 1) {
-            var level1 = game.add.text(game.world.centerX, 200, "First Blood", scenery.levelNameStyle);
-            level1.anchor.set(0.5);
-            level1.inputEnabled = true;
+        levelConfig.forEach(function (cfg) {
+            if (parseInt(safeStorage.get('stageCleared'), 10) >= cfg.minCleared) {
+                var lbl = game.add.text(game.world.centerX, cfg.yPos, cfg.name, scenery.levelNameStyle);
+                lbl.anchor.set(0.5);
+                lbl.inputEnabled = true;
 
-            level1.events.onInputOver.add(function (item) {
-                item.fill = scenery.mouseOverTextColor;
-                this.game.canvas.style.cursor = "pointer";
-            }, this);
+                lbl.events.onInputOver.add(function (item) {
+                    item.fill = scenery.mouseOverTextColor;
+                    game.canvas.style.cursor = "pointer";
+                });
 
-            level1.events.onInputOut.add(function (item) {
-                item.fill = scenery.mouseOutTextColor;
-                this.game.canvas.style.cursor = "default";
-            }, this);
+                lbl.events.onInputOut.add(function (item) {
+                    item.fill = scenery.mouseOutTextColor;
+                    game.canvas.style.cursor = "default";
+                });
 
-            level1.events.onInputDown.add(function (item) {
-                startClickSound();
-                game.state.start('level1');
-            }, this);
-        }
-
-        if (localStorage.stageCleared >= 2) {
-            var level2 = game.add.text(game.world.centerX, 300, "More Will Come", scenery.levelNameStyle);
-            level2.anchor.set(0.5);
-            level2.inputEnabled = true;
-
-            level2.events.onInputOver.add(function (item) {
-                item.fill = scenery.mouseOverTextColor;
-                this.game.canvas.style.cursor = "pointer";
-            }, this);
-
-            level2.events.onInputOut.add(function (item) {
-                item.fill = scenery.mouseOutTextColor;
-                this.game.canvas.style.cursor = "default";
-            }, this);
-
-            level2.events.onInputDown.add(function (item) {
-                startClickSound();
-                game.state.start('level2');
-            }, this);
-        }
-
-        if (localStorage.stageCleared >= 3) {
-            var level3 = game.add.text(game.world.centerX, 400, "No End In Sight", scenery.levelNameStyle);
-            level3.anchor.set(0.5);
-            level3.inputEnabled = true;
-
-            level3.events.onInputOver.add(function (item) {
-                item.fill = scenery.mouseOverTextColor;
-                this.game.canvas.style.cursor = "pointer";
-            }, this);
-
-            level3.events.onInputOut.add(function (item) {
-                item.fill = scenery.mouseOutTextColor;
-                this.game.canvas.style.cursor = "default";
-            }, this);
-
-            level3.events.onInputDown.add(function (item) {
-                startClickSound();
-                mainState.maxEnemy = 30;
-                mainState.maxShots = 30;
-                mainState.hits = 0;
-                mainState.maxHits = 5;
-                mainState.stageIndex = 3;
-                mainState.enemySpeed = MSpeed.Normal;
-                mainState.successMessage = "Good Job!\nMove To Next Stage";
-                mainState.failureMessage = "You don't \n have it in you";
-                mainState.levelIntroMessage = "Hope you are ready for more mayhem, enemy has just launched 30 missiles.\n If 5 missiles hit the city you will loose.";
-                game.state.start('level3');
-            }, this);
-        }
-
-        if (localStorage.stageCleared >= 4) {
-            var level4 = game.add.text(game.world.centerX, 500, "Only Few Bullets", scenery.levelNameStyle);
-            level4.anchor.set(0.5);
-            level4.inputEnabled = true;
-
-            level4.events.onInputOver.add(function (item) {
-                item.fill = scenery.mouseOverTextColor;
-                this.game.canvas.style.cursor = "pointer";
-            }, this);
-
-            level4.events.onInputOut.add(function (item) {
-                item.fill = scenery.mouseOutTextColor;
-                this.game.canvas.style.cursor = "default";
-            }, this);
-
-            level4.events.onInputDown.add(function (item) {
-                startClickSound();
-                mainState.maxEnemy = 30;
-                mainState.maxShots = 24;
-                mainState.stageIndex = 4;
-                mainState.hits = 0;
-                mainState.maxHits = 5;
-                mainState.enemySpeed = MSpeed.Normal;
-                mainState.successMessage = "Good Job!\nWar is still on.";
-                mainState.failureMessage = "We trusted you :(";
-                mainState.levelIntroMessage = "We wish we would have stocked piled more Agni missiles,\n you have to defend the city with 24 missiles against \n 30 enemies. If 5 missiles hit the city you will loose. ";
-                game.state.start('level4');
-            }, this);
-        }
-
-        if (localStorage.stageCleared >= 5) {
-            var level5 = game.add.text(game.world.centerX, 600, "Do or Die", scenery.levelNameStyle);
-            level5.anchor.set(0.5);
-            level5.inputEnabled = true;
-
-            level5.events.onInputOver.add(function (item) {
-                item.fill = scenery.mouseOverTextColor;
-                this.game.canvas.style.cursor = "pointer";
-            }, this);
-
-            level5.events.onInputOut.add(function (item) {
-                item.fill = scenery.mouseOutTextColor;
-                this.game.canvas.style.cursor = "default";
-            }, this);
-
-            level5.events.onInputDown.add(function (item) {
-                startClickSound();
-                mainState.maxEnemy = 50;
-                mainState.maxShots = 45;
-                mainState.stageIndex = 5;
-                mainState.hits = 0;
-                mainState.maxHits = 5;
-                mainState.enemySpeed = MSpeed.Fast;
-                mainState.successMessage = "WOW!\n You did it.\nYou saved the city.";
-                mainState.failureMessage = "Millions Perished\n You gave up easily.";
-                mainState.levelIntroMessage = "It's now or never, enemy is frustrated and has began his final assault with 50 missiles,\n we have managed to produce 45 Agni missiles to counter their attack.\n Our future depends on you now. \n If 5 missiles hit the city you will loose.";
-                game.state.start('level5');
-            }, this);
-        }
+                lbl.events.onInputDown.add(function () {
+                    startClickSound();
+                    if (cfg.maxEnemy !== undefined) {
+                        mainState.maxEnemy = cfg.maxEnemy;
+                        mainState.maxShots = cfg.maxShots;
+                        mainState.hits = 0;
+                        mainState.maxHits = cfg.maxHits;
+                        mainState.stageIndex = cfg.stageIndex;
+                        mainState.enemySpeed = cfg.enemySpeed;
+                        mainState.successMessage = cfg.successMessage;
+                        mainState.failureMessage = cfg.failureMessage;
+                        mainState.levelIntroMessage = cfg.levelIntroMessage;
+                    }
+                    game.state.start(cfg.stateKey);
+                });
+            }
+        });
     },
     update: function () { }
 };
@@ -409,6 +454,7 @@ var tutorialState = {
         if (game.time.now > nextFire) {
             var startpoint = { x: this.mstation.x + scenery.launcher.alfl, y: game.world.height - (scenery.ground.height + scenery.launcher.ahfg) };
             nextFire = game.time.now + fireRate;
+            showTapRipple(x, y);
 
             var f = new Friend(this.game, startpoint.x, startpoint.y, x, y, tutorialState);
             f.explosionSignal.add(function () {
@@ -477,14 +523,15 @@ var tutorialState = {
         var missile = new EnemyMissile(this.game, x, -200, x2, game.world.height, MSpeed.Slow);
 
         this.bombs.add(missile);
+        showEntryRipple(x);
         missile.fire();
         return missile;
     },
     showPopup: function () {
         var p = new Popup(this, "Good Job!\n Go save the city.", "Next", function (item) {
             stopStartSound();
-            if (parseInt(localStorage.stageCleared, 10) < 1) {
-                localStorage.stageCleared = 1;
+            if (parseInt(safeStorage.get('stageCleared'), 10) < 1) {
+                safeStorage.set('stageCleared', 1);
             }
 
             game.state.start('stage');
@@ -578,8 +625,9 @@ var level1State = {
         if (game.time.now > nextFire && this.shotsFired < this.maxShots) {
             var startpoint = { x: this.mstation.x + scenery.launcher.alfl, y: game.world.height - (scenery.ground.height + scenery.launcher.ahfg) };
             nextFire = game.time.now + fireRate;
+            showTapRipple(x, y);
 
-            var f = new Friend(this.game, startpoint.x, startpoint.y, x, y, tutorialState);
+            var f = new Friend(this.game, startpoint.x, startpoint.y, x, y, level1State);
             f.explosionSignal.add(function () {
                 //blast friend and show explosion
                 this.showExplosion(f.x, f.y);
@@ -664,6 +712,7 @@ var level1State = {
             //Math.floor(Math.random() * (this.enemySpeedRange.max - this.enemySpeedRange.min + 1)) + this.enemySpeedRange.min
             var missile = new EnemyMissile(this.game, x, -200, x2, game.world.height, s);
             this.bombs.add(missile);
+            showEntryRipple(x);
             missile.fire();
             this.enemyFired += 1;
             this.updateEnemyLabel();
@@ -674,8 +723,8 @@ var level1State = {
     showSuccessPopup: function () {
         var p = new Popup(this, "Good Job!\nSoon more will come.", "Next", function (item) {
             stopStartSound();
-            if (parseInt(localStorage.stageCleared, 10) < 2) {
-                localStorage.stageCleared = 2;
+            if (parseInt(safeStorage.get('stageCleared'), 10) < 2) {
+                safeStorage.set('stageCleared', 2);
             }
 
             game.state.start('stage');
@@ -700,6 +749,7 @@ var level1State = {
         } else {
             this.healthwarninglbl.text = this.hits + " hit";
         }
+        flashScreenRed(this.hits, this.maxHits);
     },
     cleanUp: function () {
         this.bombs.forEachDead(function (item) {
@@ -814,6 +864,7 @@ var level2State = {
         if (game.time.now > nextFire && this.shotsFired < this.maxShots) {
             var startpoint = { x: this.mstation.x + scenery.launcher.alfl, y: game.world.height - (scenery.ground.height + scenery.launcher.ahfg) };
             nextFire = game.time.now + fireRate;
+            showTapRipple(x, y);
 
             var f = new Friend(this.game, startpoint.x, startpoint.y, x, y, tutorialState);
             f.explosionSignal.add(function () {
@@ -1006,6 +1057,7 @@ var level2State = {
             //Math.floor(Math.random() * (this.enemySpeedRange.max - this.enemySpeedRange.min + 1)) + this.enemySpeedRange.min
             var missile = new EnemyMissile(this.game, x, -200, targetx, game.world.height, s);
             this.bombs.add(missile);
+            showEntryRipple(x);
             missile.fire();
             this.enemyFired += 1;
             this.updateEnemyLabel();
@@ -1016,8 +1068,8 @@ var level2State = {
     showSuccessPopup: function () {
         var p = new Popup(this, "Good Job!\n You shall pass.", "Next", function (item) {
             stopStartSound();
-            if (parseInt(localStorage.stageCleared, 10) < 3) {
-                localStorage.stageCleared = 3;
+            if (parseInt(safeStorage.get('stageCleared'), 10) < 3) {
+                safeStorage.set('stageCleared', 3);
             }
             game.state.start('stage');
         });
@@ -1041,6 +1093,7 @@ var level2State = {
         } else {
             this.healthwarninglbl.text = this.hits + " hit";
         }
+        flashScreenRed(this.hits, this.maxHits);
     },
     cleanUp: function () {
         this.bombs.forEachDead(function (item) {
@@ -1572,6 +1625,7 @@ var mainState = {
             if (game.time.now > nextFire) {
                 var startpoint = { x: this.mstation.x + scenery.launcher.alfl, y: game.world.height - (scenery.ground.height + scenery.launcher.ahfg) };
                 nextFire = game.time.now + fireRate;
+                showTapRipple(x, y);
                 var f = new Friend(this.game, startpoint.x, startpoint.y, x, y);
                 f.explosionSignal.add(function () {
                     this.showExplosion(f.x, f.y);
@@ -1603,6 +1657,7 @@ var mainState = {
             var x = Math.floor((Math.random() * game.world.width) + 1);
             var x2 = Math.floor((Math.random() * (game.world.width)) + 1);
             var missile = new EnemyMissile(this.game, x, -200, x2, game.world.height, MSpeed.GetAny());
+            showEntryRipple(x);
             missile.fire();
             this.enemyFired += 1;
             this.bombs.add(missile);
@@ -1646,8 +1701,8 @@ var mainState = {
     showSuccessPopup: function () {
         var p = new Popup(this, this.successMessage, "Next", function (item) {
             stopStartSound();
-            if (parseInt(localStorage.stageCleared, 10) <= this.stageIndex) {
-                localStorage.stageCleared = this.stageIndex + 1;
+            if (parseInt(safeStorage.get('stageCleared'), 10) <= this.stageIndex) {
+                safeStorage.set('stageCleared', this.stageIndex + 1);
             }
 
             game.state.start('stage');
@@ -1666,6 +1721,7 @@ var mainState = {
         } else {
             this.healthwarninglbl.text = this.hits + " hit";
         }
+        flashScreenRed(this.hits, this.maxHits);
     },
 };
 
@@ -2142,7 +2198,7 @@ var SceneBuilder = function (state) {
     state.fullvolume.anchor.setTo(0.5);
     state.fullvolume.inputEnabled = true;
     state.fullvolume.events.onInputDown.add(function () {
-        localStorage.volumestatus = "false";
+        safeStorage.set('volumestatus', 'false');
         state.fullvolume.visible = false;
         state.novolume.visible = true;
         if (bgsound && bgsound.isPlaying) {
@@ -2154,7 +2210,7 @@ var SceneBuilder = function (state) {
     state.novolume.anchor.setTo(0.5);
     state.novolume.inputEnabled = true;
     state.novolume.events.onInputDown.add(function () {
-        localStorage.volumestatus = "true";
+        safeStorage.set('volumestatus', 'true');
         state.novolume.visible = false;
         state.fullvolume.visible = true;
         if (bgsound && !bgsound.isPlaying) {
@@ -2164,7 +2220,7 @@ var SceneBuilder = function (state) {
     }, state);
 
     // Restore correct icon from persisted state
-    if (localStorage.volumestatus === "true") {
+    if (safeStorage.get('volumestatus') === 'true') {
         state.novolume.visible = false;
         state.fullvolume.visible = true;
     } else {
@@ -2175,7 +2231,7 @@ var SceneBuilder = function (state) {
 }
 
 function startSound() {
-    if (localStorage.volumestatus == "true") {
+    if (safeStorage.get('volumestatus') === 'true') {
         bgsound.play();
         bgsound.fadeTo(4000, 0.3);
     }
@@ -2186,7 +2242,7 @@ function stopStartSound() {
 }
 
 function friendSound() {
-    if (localStorage.volumestatus == "true") {
+    if (safeStorage.get('volumestatus') === 'true') {
         if (agnisound.isPlaying) {
             agnisound.stop();
         }
@@ -2196,7 +2252,7 @@ function friendSound() {
 }
 
 function startFriendExp() {
-    if (localStorage.volumestatus == "true") {
+    if (safeStorage.get('volumestatus') === 'true') {
         // Alternate between exphitsound and expsound for variety
         var expVariants = [exphitsound, expsound];
         var chosen = expVariants[Math.floor(Math.random() * expVariants.length)];
@@ -2207,14 +2263,14 @@ function startFriendExp() {
 }
 
 function startBdExp() {
-    if (localStorage.volumestatus == "true") {
+    if (safeStorage.get('volumestatus') === 'true') {
         expbdsound.volume = 0.25 + Math.random() * 0.15; // vary between 0.25 and 0.4
         expbdsound.play();
     }
 }
 
 function startClickSound() {
-    if (localStorage.volumestatus == "true") {
+    if (safeStorage.get('volumestatus') === 'true') {
         clicksound.play();
     }
 }
@@ -2223,7 +2279,51 @@ function stopFriendSound() {
     agnisound.stop();
 }
 
-var Popup = function (state, message, btnText, callback) {
+// Plays a red screen flash + camera shake whenever the city takes a hit.
+// intensity scales from 0.006 (first hit) up to 0.018 (at maxHits).
+function flashScreenRed(hits, maxHits) {
+    var ratio = maxHits > 0 ? Math.min(hits / maxHits, 1) : 0.5;
+    var g = game.add.graphics(0, 0);
+    g.fixedToCamera = true;
+    g.beginFill(0xFF2200, 0.15 + ratio * 0.25);
+    g.drawRect(0, 0, game.width, game.height);
+    g.endFill();
+    game.add.tween(g).to({ alpha: 0 }, 600, Phaser.Easing.Quadratic.Out, true)
+        .onComplete.add(function () { g.destroy(); });
+    if (game.camera.shake) {
+        game.camera.shake(0.002 + ratio * 0.004, 250);
+    }
+}
+
+// Expanding ring ripple at the tap/click point.
+function showTapRipple(x, y) {
+    var g = game.add.graphics(x, y);
+    g.lineStyle(2, 0xE8C252, 0.85);
+    g.drawCircle(0, 0, 12);
+    game.add.tween(g.scale).to({ x: 4, y: 4 }, 400, Phaser.Easing.Quadratic.Out, true)
+        .onComplete.add(function () { g.destroy(); });
+    game.add.tween(g).to({ alpha: 0 }, 400, Phaser.Easing.Quadratic.In, true);
+}
+
+// Launcher recoil — nudges the sprite down then springs back.
+
+// Pulsing white ring on the top edge to warn where the next enemy missile will enter.
+function showEntryRipple(x) {
+    var rippleCount = 3;
+    for (var i = 0; i < rippleCount; i++) {
+        (function (delay) {
+            game.time.events.add(delay, function () {
+                var g = game.add.graphics(x, 0);
+                g.fixedToCamera = false;
+                g.lineStyle(2, 0xffffff, 0.9);
+                g.drawCircle(0, 0, 18);
+                var scaleTween = game.add.tween(g.scale).to({ x: 5, y: 5 }, 500, Phaser.Easing.Quadratic.Out, true);
+                game.add.tween(g).to({ alpha: 0 }, 500, Phaser.Easing.Quadratic.In, true)
+                    .onComplete.add(function () { g.destroy(); });
+            });
+        })(i * 180);
+    }
+}var Popup = function (state, message, btnText, callback) {
     if (state.popup != undefined) {
         state.popup.destroy();
     }
@@ -2261,6 +2361,7 @@ var Popup = function (state, message, btnText, callback) {
 }
 
 game.state.add('init', initState);
+game.state.add('intro', introState);
 game.state.add('stage', stageOptionState);
 game.state.add('tutorial', tutorialState);
 game.state.add('level1', level1State);
