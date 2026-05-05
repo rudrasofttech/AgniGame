@@ -446,36 +446,8 @@ var tutorialState = {
 
         game.physics.arcade.collide(this.bombs, this.ground, this.bombCollisionWithGround, null, this);
         game.physics.arcade.overlap(this.bombs, this.explosions, this.bombCollisionWithExplosion, null, this);
-        game.physics.arcade.collide(this.bombs, this.friends, this.bombCollisionWithFriend, null, this);
 
         this.cleanUp();
-    },
-    fire: function (x, y) {
-        if (game.time.now > nextFire) {
-            var startpoint = { x: this.mstation.x + scenery.launcher.alfl, y: game.world.height - (scenery.ground.height + scenery.launcher.ahfg) };
-            nextFire = game.time.now + fireRate;
-            showTapRipple(x, y);
-
-            var f = new Friend(this.game, startpoint.x, startpoint.y, x, y, tutorialState);
-            f.explosionSignal.add(function () {
-                //blast friend and show explosion
-                this.showExplosion(f.x, f.y);
-
-                //if its the second shot fire first enemy
-                if (this.shotsFired == 1) {
-                    this.enemy1.fire();
-
-                }
-            }, this);
-            this.shotsFired += 1;
-            this.friends.add(f);
-            if (this.shotsFired == 1) {
-                //forbid friend fire for now
-                this.allowFire = false;
-            }
-            this.help.alpha = 0;
-
-        }
     },
     showExplosion: function (x, y) {
         var xpl = this.explosions.create(x, y, 'explode');
@@ -566,6 +538,7 @@ var level1State = {
         this.enemyFired = 0;
         this.enemyDead = 0;
         this.hits = 0;
+        this.gameEnded = false;
         var s = new SceneBuilder(this);
 
         this.friendlyremaininglbl.text = (this.maxShots - this.shotsFired) + " Agni";
@@ -603,8 +576,6 @@ var level1State = {
             this.fire(game.input.activePointer.x, game.input.activePointer.y);
         }
 
-
-        game.physics.arcade.collide(this.bombs, this.friends, this.bombCollisionWithFriend, null, this);
         game.physics.arcade.overlap(this.bombs, this.explosions, this.bombCollisionWithExplosion, null, this);
         game.physics.arcade.collide(this.lotusside3, this.bombs, this.enemyhitlotusside3, null, this);
         game.physics.arcade.collide(this.lotusside2, this.bombs, this.enemyhitlotusside2, null, this);
@@ -612,13 +583,16 @@ var level1State = {
 
         this.cleanUp();
 
-        if (this.hits >= this.maxHits) {
-            this.allowFire = false;
-            game.time.events.add(Phaser.Timer.SECOND * 2, function () { this.showFailurePopup() }, this);
-        }
-        else if (this.hits < this.maxHits && this.enemyDead >= this.maxEnemy) {
-            this.allowFire = false;
-            game.time.events.add(Phaser.Timer.SECOND * 2, function () { this.showSuccessPopup(); }, this);
+        if (!this.gameEnded) {
+            if (this.hits >= this.maxHits) {
+                this.gameEnded = true;
+                this.allowFire = false;
+                game.time.events.add(Phaser.Timer.SECOND * 2, function () { this.showFailurePopup(); }, this);
+            } else if (this.enemyFired >= this.maxEnemy && this.enemyDead >= this.maxEnemy) {
+                this.gameEnded = true;
+                this.allowFire = false;
+                game.time.events.add(Phaser.Timer.SECOND * 2, function () { this.showSuccessPopup(); }, this);
+            }
         }
     },
     fire: function (x, y) {
@@ -795,6 +769,7 @@ var level2State = {
         this.enemyFired = 0;
         this.enemyDead = 0;
         this.hits = 0;
+        this.gameEnded = false;
         this.buildingDestroyed = false;
         var s = new SceneBuilder(this);
 
@@ -840,7 +815,6 @@ var level2State = {
             this.fire(game.input.activePointer.x, game.input.activePointer.y);
         }
 
-        game.physics.arcade.overlap(this.bombs, this.friends, this.bombCollisionWithFriend, null, this);
         game.physics.arcade.overlap(this.bombs, this.explosions, this.bombCollisionWithExplosion, null, this);
         game.physics.arcade.overlap(this.lotusside3, this.bombs, this.enemyhitlotusside3, null, this);
         game.physics.arcade.overlap(this.lotusside2, this.bombs, this.enemyhitlotusside2, null, this);
@@ -851,13 +825,16 @@ var level2State = {
 
         this.cleanUp();
 
-        if (this.hits >= this.maxHits) {
-            this.allowFire = false;
-            game.time.events.add(2000, function () { this.showFailurePopup() }, this);
-        }
-        else if (this.hits < this.maxHits && this.enemyDead >= this.maxEnemy) {
-            this.allowFire = false;
-            game.time.events.add(2000, function () { this.showSuccessPopup(); }, this);
+        if (!this.gameEnded) {
+            if (this.hits >= this.maxHits) {
+                this.gameEnded = true;
+                this.allowFire = false;
+                game.time.events.add(2000, function () { this.showFailurePopup(); }, this);
+            } else if (this.enemyFired >= this.maxEnemy && this.enemyDead >= this.maxEnemy) {
+                this.gameEnded = true;
+                this.allowFire = false;
+                game.time.events.add(2000, function () { this.showSuccessPopup(); }, this);
+            }
         }
     },
     fire: function (x, y) {
@@ -1147,6 +1124,7 @@ var mainState = {
         this.enemyFired = 0;
         this.enemyDead = 0;
         this.hits = 0;
+        this.gameEnded = false;
         this.buildingDestroyed = false;
 
         var s = new SceneBuilder(this);
@@ -1197,7 +1175,6 @@ var mainState = {
         }
 
         game.physics.arcade.collide(this.bombs, this.ground, this.bombCollisionWithGround, null, this);
-        game.physics.arcade.collide(this.bombs, this.friends, this.bombCollisionWithFriend, null, this);
         game.physics.arcade.overlap(this.bombs, this.explosions, this.bombCollisionWithExplosion, null, this);
         game.physics.arcade.overlap(this.bd1layer, this.bombs, this.enemyhitbd1layer, null, this);
         game.physics.arcade.overlap(this.bd2layer, this.bombs, this.enemyhitbd2layer, null, this);
@@ -1214,13 +1191,16 @@ var mainState = {
         game.physics.arcade.overlap(this.lotusside1, this.bombs, this.enemyhitlotusside1, null, this);
         game.physics.arcade.overlap(this.mstation, this.friends);
 
-        if (this.hits >= this.maxHits) {
-            this.allowFire = false;
-            game.time.events.add(2000, function () { this.showFailurePopup() }, this);
-        }
-        if (this.hits < this.maxHits && this.enemyDead >= this.maxEnemy) {
-            this.allowFire = false;
-            game.time.events.add(2000, function () { this.showSuccessPopup(); }, this);
+        if (!this.gameEnded) {
+            if (this.hits >= this.maxHits) {
+                this.gameEnded = true;
+                this.allowFire = false;
+                game.time.events.add(2000, function () { this.showFailurePopup(); }, this);
+            } else if (this.enemyFired >= this.maxEnemy && this.enemyDead >= this.maxEnemy) {
+                this.gameEnded = true;
+                this.allowFire = false;
+                game.time.events.add(2000, function () { this.showSuccessPopup(); }, this);
+            }
         }
     },
     setupExplosion: function (exp) {
