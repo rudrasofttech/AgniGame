@@ -2116,36 +2116,7 @@ var SceneBuilder = function (state) {
         state.help.anchor.set(0.5);
         state.help.alpha = 0;
     }
-    else {
-        //add volume control to stage choosing state only
-        state.fullvolume = state.game.add.sprite(game.world.width - 50, 20, "fullvolume")
-        state.fullvolume.anchor.setTo(0.5);
-        state.fullvolume.inputEnabled = true;
-        state.fullvolume.events.onInputDown.add(function () {
-            localStorage.volumestatus = "false";
-
-            state.fullvolume.visible = false;
-            state.novolume.visible = true;
-        }, state);
-
-        state.novolume = state.game.add.sprite(game.world.width - 50, 20, "novolume")
-        state.novolume.anchor.setTo(0.5);
-        state.novolume.inputEnabled = true;
-        state.novolume.events.onInputDown.add(function () {
-            localStorage.volumestatus = "true";
-
-            state.novolume.visible = false;
-            state.fullvolume.visible = true;
-        }, state);
-
-        if (localStorage.volumestatus == "true") {
-            state.novolume.visible = false;
-            state.fullvolume.visible = true;
-        } else {
-            state.fullvolume.visible = false;
-            state.novolume.visible = true;
-        }
-    }
+    else { }
     if (state.key == "tutorial") {
         state.pointer = state.game.add.sprite((game.world.width / 2) + 250, 300, 'pointer');
         state.pointer.width = 100;
@@ -2166,6 +2137,40 @@ var SceneBuilder = function (state) {
         sounds = [bgsound, agnisound, expsound, expbdsound, exphitsound];
     }
 
+    // Volume control – shown on all states, UI restored from localStorage on every load
+    state.fullvolume = state.game.add.sprite(game.world.width - 50, 20, "fullvolume");
+    state.fullvolume.anchor.setTo(0.5);
+    state.fullvolume.inputEnabled = true;
+    state.fullvolume.events.onInputDown.add(function () {
+        localStorage.volumestatus = "false";
+        state.fullvolume.visible = false;
+        state.novolume.visible = true;
+        if (bgsound && bgsound.isPlaying) {
+            bgsound.stop();
+        }
+    }, state);
+
+    state.novolume = state.game.add.sprite(game.world.width - 50, 20, "novolume");
+    state.novolume.anchor.setTo(0.5);
+    state.novolume.inputEnabled = true;
+    state.novolume.events.onInputDown.add(function () {
+        localStorage.volumestatus = "true";
+        state.novolume.visible = false;
+        state.fullvolume.visible = true;
+        if (bgsound && !bgsound.isPlaying) {
+            bgsound.play();
+            bgsound.fadeTo(1000, 0.3);
+        }
+    }, state);
+
+    // Restore correct icon from persisted state
+    if (localStorage.volumestatus === "true") {
+        state.novolume.visible = false;
+        state.fullvolume.visible = true;
+    } else {
+        state.fullvolume.visible = false;
+        state.novolume.visible = true;
+    }
 
 }
 
@@ -2192,12 +2197,18 @@ function friendSound() {
 
 function startFriendExp() {
     if (localStorage.volumestatus == "true") {
-        exphitsound.play();
+        // Alternate between exphitsound and expsound for variety
+        var expVariants = [exphitsound, expsound];
+        var chosen = expVariants[Math.floor(Math.random() * expVariants.length)];
+        if (chosen.isPlaying) { chosen.stop(); }
+        chosen.volume = 0.2 + Math.random() * 0.2; // vary between 0.2 and 0.4
+        chosen.play();
     }
 }
 
 function startBdExp() {
     if (localStorage.volumestatus == "true") {
+        expbdsound.volume = 0.25 + Math.random() * 0.15; // vary between 0.25 and 0.4
         expbdsound.play();
     }
 }
