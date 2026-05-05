@@ -104,7 +104,7 @@
 
         @media (orientation: portrait) {
             #rotateMsg { display: flex; }
-            #gameDiv, #prepareDiv, #loadingtxt { display: none !important; }
+            #gameDiv, #prepareDiv, #loadingbar { display: none !important; }
         }
 
         .btn:hover {
@@ -258,7 +258,12 @@
         </div>
     </div>
 
-    <h1 id="loadingtxt" style="display:none; position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); font-family:armalite,Arial,sans-serif; font-size:28px; color:#fff; margin:0; text-align:center; z-index:9998;">Loading&hellip; 0%</h1>
+    <div id="loadingbar" style="display:none; position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); width:280px; text-align:center; z-index:9998;">
+        <div style="font-family:armalite,Arial,sans-serif; font-size:22px; color:#fff; margin-bottom:10px;">Loading&hellip;</div>
+        <div style="background:#1a3a5c; border-radius:8px; overflow:hidden; height:18px; width:100%;">
+            <div id="loadingfill" style="background:#E8C252; height:100%; width:0%; transition:width 0.2s ease;"></div>
+        </div>
+    </div>
     <div id="gameDiv" style="display:none;"></div>
     <div id="prepareDiv" style="width:800px; height:599px; background-image:url(images/startscreen.jpg); margin:0 auto; position:relative;">
 
@@ -306,7 +311,6 @@
         function startGameScreen() {
             $("#prepareDiv").hide();
             document.getElementById('gameDiv').style.display = 'flex';
-            $("#loadingtxt").hide();
             game.state.start('init');
         }
     </script>
