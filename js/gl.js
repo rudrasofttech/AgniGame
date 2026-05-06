@@ -164,11 +164,13 @@ var levelConfig = [
 
 var initState = {
     preload: function () {
-        game.scale.scaleMode = Phaser.ScaleManager.RESIZE;
-        game.scale.parentIsWindow = true;
-        game.scale.pageAlignHorizontally = false;
-        game.scale.pageAlignVertically = false;
+        game.scale.scaleMode = Phaser.ScaleManager.SHOW_ALL;
+        game.scale.parentIsWindow = false;
+        game.scale.pageAlignHorizontally = true;
+        game.scale.pageAlignVertically = true;
         game.scale.refresh();
+        game.input.touch.capture = true;
+        game.input.mouse.capture = true;
         var loadingBar = document.getElementById('loadingbar');
         var loadingFill = document.getElementById('loadingfill');
         if (loadingBar) { loadingBar.style.display = 'block'; }
@@ -410,8 +412,7 @@ var tutorialState = {
         this.bombs.add(this.enemy1);
 
         this.pointer.events.onInputDown.add(function (item) {
-            //allow friend fire again
-            this.allowFire = true;
+            // Resume enemy1 toward the city
             if (this.enemy1 != undefined) {
                 this.enemy1.smokeEmitter.on = true;
                 this.enemy1.target = { x: 600, y: game.world.height };
@@ -421,27 +422,35 @@ var tutorialState = {
                 item.alpha = 0;
                 item.inputEnabled = false;
             }
-
+            // Allow firing and launch Agni toward the white dot position
+            this.allowFire = true;
+            this.fire(item.x, item.y);
         }, this);
         this.startstage.events.onInputDown.add(function (item) {
             var tween = game.add.tween(item).to({ alpha: 0 }, 600, Phaser.Easing.Linear.None, true, 300);
             tween.onComplete.add(function (sprite, tween) {
                 sprite.destroy();
-                tutorialState.allowFire = true;
                 this.help.alpha = 1;
-
-                //  Being mp3 files these take time to decode, so we can't play them instantly
-                //  Using setDecodedCallback we can be notified when they're ALL ready for use.
-                //  The audio files could decode in ANY order, we can never be sure which it'll be.
+                // Let the player fire first; enemy1 will launch after their first shot explodes.
+                tutorialState.allowFire = true;
                 game.sound.setDecodedCallback(sounds, startSound, this);
             }, this);
         }, this);
 
-
+        game.input.onDown.add(this._handleFire, this);
+    },
+    _handleFire: function (pointer) {
+        if (this.allowFire) {
+            this.fire(pointer.x, pointer.y);
+        }
+    },
+    shutdown: function () {
+        game.input.onDown.remove(this._handleFire, this);
     },
     update: function () {
-        if (game.input.activePointer.isDown && this.allowFire) {
-            this.fire(game.input.activePointer.x, game.input.activePointer.y);
+        var _ptr = game.input.pointer1.isDown ? game.input.pointer1 : game.input.activePointer;
+        if (_ptr.isDown && this.allowFire) {
+            this.fire(_ptr.x, _ptr.y);
         }
 
         game.physics.arcade.collide(this.bombs, this.ground, this.bombCollisionWithGround, null, this);
@@ -509,6 +518,28 @@ var tutorialState = {
             game.state.start('stage');
         });
     },
+    fire: function (x, y) {
+        if (game.time.now > nextFire) {
+            var startpoint = { x: this.mstation.x + scenery.launcher.alfl, y: game.world.height - (scenery.ground.height + scenery.launcher.ahfg) };
+            nextFire = game.time.now + fireRate;
+            showTapRipple(x, y);
+            var f = new Friend(this.game, startpoint.x, startpoint.y, x, y, tutorialState);
+            var isFirstShot = (this.shotsFired === 0);
+            f.explosionSignal.add(function () {
+                this.showExplosion(f.x, f.y);
+                // After the first shot explodes, send the enemy missile
+                if (isFirstShot) {
+                    this.enemy1.fire();
+                }
+            }, this);
+            this.shotsFired += 1;
+            // Lock firing while enemy1 flies toward its pause point
+            if (isFirstShot) {
+                this.allowFire = false;
+            }
+            this.friends.add(f);
+        }
+    },
     cleanUp: function () {
         this.bombs.forEachDead(function (item) {
             item.destroy();
@@ -568,12 +599,23 @@ var level1State = {
 
             }, this);
         }, this);
+
+        game.input.onDown.add(this._handleFire, this);
+    },
+    _handleFire: function (pointer) {
+        if (this.allowFire) {
+            this.fire(pointer.x, pointer.y);
+        }
+    },
+    shutdown: function () {
+        game.input.onDown.remove(this._handleFire, this);
     },
     update: function () {
         game.physics.arcade.collide(this.bombs, this.ground, this.bombCollisionWithGround, null, this);
 
-        if (game.input.activePointer.isDown && this.allowFire) {
-            this.fire(game.input.activePointer.x, game.input.activePointer.y);
+        var _ptr = game.input.pointer1.isDown ? game.input.pointer1 : game.input.activePointer;
+        if (_ptr.isDown && this.allowFire) {
+            this.fire(_ptr.x, _ptr.y);
         }
 
         game.physics.arcade.overlap(this.bombs, this.explosions, this.bombCollisionWithExplosion, null, this);
@@ -807,12 +849,23 @@ var level2State = {
 
             }, this);
         }, this);
+
+        game.input.onDown.add(this._handleFire, this);
+    },
+    _handleFire: function (pointer) {
+        if (this.allowFire) {
+            this.fire(pointer.x, pointer.y);
+        }
+    },
+    shutdown: function () {
+        game.input.onDown.remove(this._handleFire, this);
     },
     update: function () {
         game.physics.arcade.collide(this.bombs, this.ground, this.bombCollisionWithGround, null, this);
 
-        if (game.input.activePointer.isDown && this.allowFire) {
-            this.fire(game.input.activePointer.x, game.input.activePointer.y);
+        var _ptr = game.input.pointer1.isDown ? game.input.pointer1 : game.input.activePointer;
+        if (_ptr.isDown && this.allowFire) {
+            this.fire(_ptr.x, _ptr.y);
         }
 
         game.physics.arcade.overlap(this.bombs, this.explosions, this.bombCollisionWithExplosion, null, this);
@@ -1167,11 +1220,22 @@ var mainState = {
 
         game.time.events.loop(20000, this.setDayCycle, this);
         game.time.events.loop(30000, this.startRaining, this);
+
+        game.input.onDown.add(this._handleFire, this);
+    },
+    _handleFire: function (pointer) {
+        if (this.allowFire) {
+            this.fire(pointer.x, pointer.y);
+        }
+    },
+    shutdown: function () {
+        game.input.onDown.remove(this._handleFire, this);
     },
     update: function () {
         this.cleanUp();
-        if (game.input.activePointer.isDown && this.allowFire) {
-            this.fire(game.input.activePointer.x, game.input.activePointer.y);
+        var _ptr = game.input.pointer1.isDown ? game.input.pointer1 : game.input.activePointer;
+        if (_ptr.isDown && this.allowFire) {
+            this.fire(_ptr.x, _ptr.y);
         }
 
         game.physics.arcade.collide(this.bombs, this.ground, this.bombCollisionWithGround, null, this);
