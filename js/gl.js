@@ -136,29 +136,29 @@ var levelConfig = [
         enemySpeed: MSpeed.Normal,
         successMessage: "Good Job!\nMove To Next Stage",
         failureMessage: "You don't \n have it in you",
-        levelIntroMessage: "Hope you are ready for more mayhem, enemy has just launched 30 missiles.\n If 5 missiles hit the city you will loose."
+        levelIntroMessage: "Hope you are ready for more mayhem,\n enemy has just launched 30 missiles.\n If 5 missiles hit the city you will loose."
     },
     {
         stateKey: 'level4',
         name: 'Only Few Bullets',
         minCleared: 4,
         yPos: 500,
-        maxEnemy: 30, maxShots: 24, maxHits: 5, stageIndex: 4,
+        maxEnemy: 27, maxShots: 24, maxHits: 5, stageIndex: 4,
         enemySpeed: MSpeed.Normal,
         successMessage: "Good Job!\nWar is still on.",
         failureMessage: "We trusted you :(",
-        levelIntroMessage: "We wish we would have stocked piled more Agni missiles,\n you have to defend the city with 24 missiles against \n 30 enemies. If 5 missiles hit the city you will loose. "
+        levelIntroMessage: "We wish we would have stocked piled\n more Agni missiles but we are running low,\n we have only 24 missiles to intercept 27 incoming missiles.\n If 5 missiles hit the city you will loose."
     },
     {
         stateKey: 'level5',
         name: 'Do or Die',
         minCleared: 5,
         yPos: 600,
-        maxEnemy: 50, maxShots: 45, maxHits: 5, stageIndex: 5,
+        maxEnemy: 50, maxShots: 50, maxHits: 1, stageIndex: 5,
         enemySpeed: MSpeed.Fast,
         successMessage: "WOW!\n You did it.\nYou saved the city.",
         failureMessage: "Millions Perished\n You gave up easily.",
-        levelIntroMessage: "It's now or never, enemy is frustrated and has began his final assault with 50 missiles,\n we have managed to produce 45 Agni missiles to counter their attack.\n Our future depends on you now. \n If 5 missiles hit the city you will loose."
+        levelIntroMessage: "It's now or never!\n enemy is frustrated and has began his final assault,\n 50 missiles are heading toward the city at a faster speed.\n You have 50 Agni missiles to intercept them.\n If even a single missile hits the city you will loose."
     }
 ];
 
@@ -403,7 +403,7 @@ var tutorialState = {
         }, this);
         //if first enemy is destroyed by friend fire another enemy missile
         this.enemy1.destroySignal.add(function () {
-            this.help.setText("Good now try on your own, here comes another one.");
+            this.help.setText("Good now try on your own,\n here comes another one.");
             this.help.alpha = 1;
             this.createBomb();
             this.allowFire = true;
@@ -574,7 +574,7 @@ var level1State = {
 
         this.friendlyremaininglbl.text = (this.maxShots - this.shotsFired) + " Agni";
         this.enemyremaininglbl.text = (this.maxEnemy - this.enemyFired) + " Missiles";
-        this.help.setText("We have intercepted 6 incoming enemy missiles, each targeting the Lotus Temple.\n Protect it at all cost. A single hit and you will loose.")
+        this.help.setText("We have intercepted 6 incoming enemy missiles,\n each targeting the Lotus Temple.\n Protect it at all cost.\n A single hit and you will loose.")
         this.help.alpha = 1;
         this.help.y = game.world.centerY - 200;
         this.startstage.events.onInputDown.add(function (item) {
@@ -661,7 +661,6 @@ var level1State = {
     showExplosion: function (x, y) {
         var xpl = this.explosions.create(x, y, 'explode');
         xpl.anchor.setTo(0.5, 0.5);
-
         xplanim = xpl.animations.add('xplode');
         xpl.animations.play('xplode', 65, false);
         xplanim.onComplete.add(function (sprite, animation) { sprite.destroy(); }, this);
@@ -817,7 +816,7 @@ var level2State = {
 
         this.friendlyremaininglbl.text = (this.maxShots - this.shotsFired) + " Agni";
         this.enemyremaininglbl.text = (this.maxEnemy - this.enemyFired) + " Missiles";
-        this.help.setText("10 more enemy9 missiles are heading your way targeting few heritage sites and commercial buildings.\n " + this.maxHits + " hits and you will loose.")
+        this.help.setText("10 more enemy missiles are\n heading your way targeting few heritage sites\n and commercial buildings.\n\n " + this.maxHits + " hits and you will loose.")
         this.help.alpha = 1;
         this.help.y = game.world.centerY - 200;
         this.startstage.events.onInputDown.add(function (item) {
@@ -915,7 +914,6 @@ var level2State = {
     showExplosion: function (x, y) {
         var xpl = this.explosions.create(x, y, 'explode');
         xpl.anchor.setTo(0.5, 0.5);
-
         xplanim = xpl.animations.add('xplode');
         xpl.animations.play('xplode', 65, false);
         xplanim.onComplete.add(function (sprite, animation) { sprite.destroy(); }, this);
@@ -1634,7 +1632,6 @@ var mainState = {
         //}
         var xpl = this.explosions.create(x, y, 'explode');
         xpl.anchor.setTo(0.5, 0.5);
-
         xplanim = xpl.animations.add('xplode');
         xpl.animations.play('xplode', 65, false);
         xplanim.onComplete.add(function (sprite, animation) { sprite.destroy(); }, this);
@@ -1933,8 +1930,20 @@ EnemyMissile.prototype.fire = function () {
     this.rotation = this.game.physics.arcade.moveToXY(this, this.target.x, this.target.y, this.speed);
 }
 EnemyMissile.prototype.blast = function () {
+    if (!this.alive) return; // guard against double-blast when multiple explosions overlap same missile
     this.smokeEmitter.on = false;
     this.smokeEmitter.destroy();
+    // Purely visual explosion — added directly to the world, not to any
+    // physics group, so it cannot trigger collisions or affect gameplay.
+    // Place at the tip (front end) of the missile: anchor is left-center,
+    // so the tip is 'width' units forward along the current rotation.
+    var tipX = this.x + this.width * Math.cos(this.rotation);
+    var tipY = this.y + this.width * Math.sin(this.rotation);
+    var xpl = this.game.add.sprite(tipX, tipY, 'explode');
+    xpl.anchor.setTo(0.5, 0.5);
+    var anim = xpl.animations.add('xplode');
+    xpl.animations.play('xplode', 65, false);
+    anim.onComplete.add(function () { xpl.destroy(); });
     this.destroySignal.dispatch();
     this.kill();
     //this.destroy();
